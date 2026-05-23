@@ -86,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // Dim the "Enable Hotkey Access…" item when permission is already granted
-    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(openAccessibilitySettings) {
             return !AXIsProcessTrusted()
         }
