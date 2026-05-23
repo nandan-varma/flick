@@ -11,7 +11,7 @@ private let relevantModifiers: CGEventFlags = [.maskAlternate, .maskShift, .mask
 final class HotkeyManager: @unchecked Sendable {
     var onActivate: (() -> Void)?
 
-    private var eventTap: CFMachPort?
+    nonisolated(unsafe) private var eventTap: CFMachPort?
 
     var keyCode: Int {
         get { UserDefaults.standard.object(forKey: HotkeyKey.keyCode) as? Int ?? 49 }
