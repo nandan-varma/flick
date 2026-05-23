@@ -39,7 +39,7 @@ final class HotkeyManager: @unchecked Sendable {
         ).intersection(relevantModifiers)
 
         let trusted = AXIsProcessTrustedWithOptions(
-            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         )
         if trusted {
             registerEventTap()
