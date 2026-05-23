@@ -28,6 +28,8 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         static let actionBarHeight: CGFloat = 38
         static let separatorHeight: CGFloat = 1
         static let maxVisibleItems = 8
+        static let chatPanelHeight: CGFloat = 460
+        static let aiInlineMaxHeight: CGFloat = 150
     }
 
     private static let rowIdentifier       = NSUserInterfaceItemIdentifier("ResultRow")
@@ -39,11 +41,19 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     private let calculatorLabel = NSTextField(labelWithString: "")
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
+    // Chat mode: reuses scrollView by swapping its documentView to chatTextView
+    private let chatTextView = NSTextView()
+    // Inline AI response area (shown automatically when query has "ai " prefix)
+    private let aiInlineScrollView = NSScrollView()
+    private let aiInlineTextView = NSTextView()
+    private let aiInlineSeparator = NSBox()
     private let actionBar = ActionBarView()
     private let topSeparator = NSBox()
     private let bottomSeparator = NSBox()
 
     private var calculatorHeightConstraint: NSLayoutConstraint?
+    private var aiInlineHeightConstraint: NSLayoutConstraint?
+    private var aiInlineSeparatorHeightConstraint: NSLayoutConstraint?
     private var scrollHeightConstraint: NSLayoutConstraint?
     private var actionBarHeightConstraint: NSLayoutConstraint?
     private var keyDownMonitor: Any?
@@ -74,7 +84,9 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         setupSearchField()
         setupCalculatorLabel()
         setupSeparators()
+        setupAIInlineView()
         setupTableView()
+        setupChatView()
         setupActionBar()
         observeViewModel()
     }
@@ -146,6 +158,51 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         ])
     }
 
+    private func setupAIInlineView() {
+        guard let contentView = window?.contentView else { return }
+
+        aiInlineTextView.isEditable = false
+        aiInlineTextView.isSelectable = true
+        aiInlineTextView.drawsBackground = false
+        aiInlineTextView.textContainerInset = NSSize(width: 16, height: 10)
+        aiInlineTextView.isVerticallyResizable = true
+        aiInlineTextView.isHorizontallyResizable = false
+        aiInlineTextView.autoresizingMask = [.width]
+        aiInlineTextView.textContainer?.widthTracksTextView = true
+        aiInlineTextView.textContainer?.containerSize = NSSize(
+            width: Layout.panelWidth, height: .greatestFiniteMagnitude
+        )
+
+        aiInlineScrollView.documentView = aiInlineTextView
+        aiInlineScrollView.hasVerticalScroller = true
+        aiInlineScrollView.hasHorizontalScroller = false
+        aiInlineScrollView.drawsBackground = false
+        aiInlineScrollView.translatesAutoresizingMaskIntoConstraints = false
+
+        aiInlineSeparator.boxType = .separator
+        aiInlineSeparator.translatesAutoresizingMaskIntoConstraints = false
+
+        contentView.addSubview(aiInlineScrollView)
+        contentView.addSubview(aiInlineSeparator)
+
+        let aih = aiInlineScrollView.heightAnchor.constraint(equalToConstant: 0)
+        let ash = aiInlineSeparator.heightAnchor.constraint(equalToConstant: 0)
+        aiInlineHeightConstraint = aih
+        aiInlineSeparatorHeightConstraint = ash
+
+        NSLayoutConstraint.activate([
+            aiInlineScrollView.topAnchor.constraint(equalTo: topSeparator.bottomAnchor),
+            aiInlineScrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            aiInlineScrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            aih,
+
+            aiInlineSeparator.topAnchor.constraint(equalTo: aiInlineScrollView.bottomAnchor),
+            aiInlineSeparator.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            aiInlineSeparator.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            ash,
+        ])
+    }
+
     private func setupTableView() {
         guard let contentView = window?.contentView else { return }
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("results"))
@@ -173,11 +230,27 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         let sh = scrollView.heightAnchor.constraint(equalToConstant: 0)
         scrollHeightConstraint = sh
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: topSeparator.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: aiInlineSeparator.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             sh,
         ])
+    }
+
+    private func setupChatView() {
+        // chatTextView will become scrollView's documentView in chat mode.
+        // Configure it here; it is not in the view hierarchy until mode switches.
+        chatTextView.isEditable = false
+        chatTextView.isSelectable = true
+        chatTextView.drawsBackground = false
+        chatTextView.textContainerInset = NSSize(width: 14, height: 14)
+        chatTextView.isVerticallyResizable = true
+        chatTextView.isHorizontallyResizable = false
+        chatTextView.autoresizingMask = [.width]
+        chatTextView.textContainer?.widthTracksTextView = true
+        chatTextView.textContainer?.containerSize = NSSize(
+            width: Layout.panelWidth, height: .greatestFiniteMagnitude
+        )
     }
 
     private func setupActionBar() {
@@ -221,6 +294,23 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
 
     private func handleKeyDown(event: NSEvent) -> NSEvent? {
         guard let vm = viewModel else { return event }
+
+        if vm.mode == .chat {
+            switch event.keyCode {
+            case 36, 76: // Return — send message
+                let prompt = searchField.stringValue
+                searchField.stringValue = ""
+                Task { await vm.chatViewModel?.send(prompt) }
+                return nil
+            case 53: // Escape — exit chat
+                vm.exitChatMode()
+                searchField.stringValue = ""
+                return nil
+            default:
+                return event
+            }
+        }
+
         switch event.keyCode {
         case 125: // ↓
             moveSelection(by: 1)
@@ -229,11 +319,27 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
             moveSelection(by: -1)
             return nil
         case 36, 76: // Return / numpad Enter
-            close()
-            vm.runSelected()
+            if vm.inlineAIResponse != nil {
+                // Copy the inline AI response and dismiss
+                vm.copyInlineAIResponse()
+                close()
+            } else {
+                vm.runSelected()
+                // Only close if the command didn't switch to chat mode
+                if vm.mode == .search {
+                    close()
+                }
+            }
             return nil
         case 53: // Escape
-            close()
+            if vm.inlineAIResponse != nil || vm.inlineAIStreaming {
+                // Cancel inline AI without closing
+                vm.cancelInlineAI()
+                searchField.stringValue = ""
+                vm.query = ""
+            } else {
+                close()
+            }
             return nil
         default:
             if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "k" {
@@ -283,12 +389,172 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         withObservationTracking {
             _ = viewModel?.results
             _ = viewModel?.calculatorResult
+            _ = viewModel?.mode
+            _ = viewModel?.inlineAIResponse
+            _ = viewModel?.inlineAIStreaming
+            _ = viewModel?.chatViewModel?.messages
+            _ = viewModel?.chatViewModel?.isStreaming
         } onChange: { [weak self] in
             DispatchQueue.main.async {
-                self?.reloadTable()
+                self?.applyMode()
                 self?.observeViewModel()
             }
         }
+    }
+
+    // MARK: - Mode management
+
+    private func applyMode() {
+        guard window?.isVisible == true, let vm = viewModel else { return }
+
+        // Always sync inline AI view first (affects layout in search mode)
+        updateAIInlineView()
+
+        switch vm.mode {
+        case .search:
+            if scrollView.documentView !== tableView {
+                scrollView.documentView = tableView
+            }
+            searchField.placeholderString = "Search apps, actions, and more…"
+            reloadTable()
+        case .chat:
+            aiInlineHeightConstraint?.constant = 0
+            aiInlineSeparatorHeightConstraint?.constant = 0
+            if scrollView.documentView !== chatTextView {
+                chatTextView.frame = NSRect(
+                    x: 0, y: 0,
+                    width: scrollView.contentSize.width,
+                    height: scrollView.contentSize.height
+                )
+                scrollView.documentView = chatTextView
+            }
+            searchField.placeholderString = "Ask AI anything…"
+            calculatorLabel.isHidden = true
+            calculatorHeightConstraint?.constant = 0
+            syncChatTextView()
+            resizePanelForChat()
+        }
+    }
+
+    private func updateAIInlineView() {
+        guard let vm = viewModel else { return }
+        let active = vm.inlineAIStreaming || vm.inlineAIResponse != nil
+        if active {
+            aiInlineHeightConstraint?.constant = Layout.aiInlineMaxHeight
+            aiInlineSeparatorHeightConstraint?.constant = Layout.separatorHeight
+            syncAIInlineTextView()
+        } else {
+            aiInlineHeightConstraint?.constant = 0
+            aiInlineSeparatorHeightConstraint?.constant = 0
+        }
+    }
+
+    private func syncAIInlineTextView() {
+        guard let vm = viewModel else { return }
+        let result = NSMutableAttributedString()
+
+        let isStreaming = vm.inlineAIStreaming
+        let text = vm.inlineAIResponse
+
+        if isStreaming && (text?.isEmpty ?? true) {
+            result.append(NSAttributedString(
+                string: "Generating…",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 13),
+                    .foregroundColor: NSColor.tertiaryLabelColor,
+                ]
+            ))
+        } else if let response = text {
+            result.append(NSAttributedString(
+                string: response,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 13),
+                    .foregroundColor: NSColor.labelColor,
+                ]
+            ))
+            if isStreaming {
+                result.append(NSAttributedString(
+                    string: " ▋",
+                    attributes: [
+                        .font: NSFont.systemFont(ofSize: 13),
+                        .foregroundColor: NSColor.tertiaryLabelColor,
+                    ]
+                ))
+            }
+        }
+
+        aiInlineTextView.textStorage?.setAttributedString(result)
+        aiInlineTextView.scrollToEndOfDocument(nil)
+    }
+
+    private func syncChatTextView() {
+        guard let vm = viewModel, let chatVM = vm.chatViewModel else { return }
+
+        let result = NSMutableAttributedString()
+
+        if chatVM.messages.isEmpty {
+            let placeholder = NSAttributedString(
+                string: "Ask anything. Runs entirely on-device.\n",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 13),
+                    .foregroundColor: NSColor.secondaryLabelColor
+                ]
+            )
+            result.append(placeholder)
+        }
+
+        for (i, msg) in chatVM.messages.enumerated() {
+            if i > 0 { result.append(NSAttributedString(string: "\n\n")) }
+            switch msg.role {
+            case .user:
+                result.append(NSAttributedString(string: "You\n", attributes: [
+                    .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                    .foregroundColor: NSColor.tertiaryLabelColor
+                ]))
+                result.append(NSAttributedString(string: msg.text, attributes: [
+                    .font: NSFont.systemFont(ofSize: 13),
+                    .foregroundColor: NSColor.labelColor
+                ]))
+            case .assistant:
+                result.append(NSAttributedString(string: "AI\n", attributes: [
+                    .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                    .foregroundColor: NSColor.tertiaryLabelColor
+                ]))
+                let text = msg.isStreaming && msg.text.isEmpty ? "…" : msg.text
+                result.append(NSAttributedString(string: text, attributes: [
+                    .font: NSFont.systemFont(ofSize: 13),
+                    .foregroundColor: NSColor.secondaryLabelColor
+                ]))
+            }
+        }
+
+        chatTextView.textStorage?.setAttributedString(result)
+        // Scroll to bottom so latest response is visible
+        chatTextView.scrollToEndOfDocument(nil)
+
+        // Update action bar
+        let isStreaming = chatVM.isStreaming
+        actionBar.configure(
+            actionLabel: isStreaming ? "AI is thinking…" : "On-device · private",
+            icon: NSImage(systemSymbolName: isStreaming ? "ellipsis" : "brain", accessibilityDescription: nil)
+        )
+        actionBarHeightConstraint?.constant = Layout.actionBarHeight
+        topSeparator.isHidden = false
+        bottomSeparator.isHidden = false
+    }
+
+    private func resizePanelForChat() {
+        let totalHeight = Layout.chatPanelHeight
+        let chatHeight = totalHeight
+            - Layout.searchAreaHeight
+            - Layout.separatorHeight * 2
+            - Layout.actionBarHeight
+        scrollHeightConstraint?.constant = chatHeight
+        guard let panel = window else { return }
+        var frame = panel.frame
+        frame.origin.y += frame.height - totalHeight
+        frame.size.height = totalHeight
+        panel.setFrame(frame, display: true, animate: false)
     }
 
     // MARK: - Table reload & window sizing
@@ -315,7 +581,8 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
 
         let calcAreaHeight: CGFloat = hasCalcResult ? Layout.calculatorHeight + 8 : 0
         let separators: CGFloat = hasResults ? Layout.separatorHeight * 2 : 0
-        let totalHeight = Layout.searchAreaHeight + calcAreaHeight + tableHeight + separators + actionBarHeight + 4
+        let aiHeight = (aiInlineHeightConstraint?.constant ?? 0) + (aiInlineSeparatorHeightConstraint?.constant ?? 0)
+        let totalHeight = Layout.searchAreaHeight + calcAreaHeight + aiHeight + tableHeight + separators + actionBarHeight + 4
 
         if let panel = window {
             var frame = panel.frame
@@ -336,8 +603,9 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
             tableView.deselectAll(nil)
         }
 
-        topSeparator.isHidden = !hasResults
-        bottomSeparator.isHidden = !(hasResults || hasCalcResult)
+        let hasInlineAI = (viewModel?.inlineAIResponse != nil || viewModel?.inlineAIStreaming == true)
+        topSeparator.isHidden = !hasResults && !hasInlineAI
+        bottomSeparator.isHidden = !(hasResults || hasCalcResult || hasInlineAI)
         updateActionBar()
     }
 
@@ -386,6 +654,22 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
             )
             return
         }
+        if vm.inlineAIStreaming {
+            actionBar.configure(
+                actionLabel: "Generating…",
+                icon: NSImage(systemSymbolName: "brain", accessibilityDescription: nil)
+            )
+            actionBarHeightConstraint?.constant = Layout.actionBarHeight
+            return
+        }
+        if vm.inlineAIResponse != nil {
+            actionBar.configure(
+                actionLabel: "Copy AI Response",
+                icon: NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
+            )
+            actionBarHeightConstraint?.constant = Layout.actionBarHeight
+            return
+        }
         let row = tableView.selectedRow
         if rows.indices.contains(row), case .item(let cmd, _) = rows[row] {
             actionBar.configure(actionLabel: cmd.actionLabel, icon: cmd.icon)
@@ -405,7 +689,9 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     }
 
     override func showWindow(_ sender: Any?) {
-        // Reset search — this triggers search() which populates the home screen.
+        // Reset to search mode and clear query each time the panel appears.
+        viewModel?.cancelInlineAI()
+        viewModel?.mode = .search
         searchField.stringValue = ""
         viewModel?.query = ""
         viewModel?.selectedIndex = 0

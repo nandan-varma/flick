@@ -44,19 +44,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupRegistry() {
+        let aiService = AIService.shared
+        let chatVM = ChatViewModel(aiService: aiService)
+        viewModel.chatViewModel = chatVM
+
         let appExt = AppLauncherExtension(frecencyStore: frecencyStore)
         let clipExt = ClipboardExtension(manager: clipboardManager)
         let snipExt = SnippetExtension(manager: snippetManager)
         let linkExt = QuicklinkExtension(manager: quicklinkManager)
         let sysExt  = SystemExtension()
         let winExt  = WindowExtension(manager: windowManager)
+        let aiExt   = AIChatExtension { [weak self] prompt in
+            self?.viewModel.enterChatMode(initialPrompt: prompt)
+        }
 
         appLauncherExt = appExt
         snippetExt = snipExt
         quicklinkExt = linkExt
 
         let registry = CommandRegistry()
-        // Registration order determines home-screen ordering and tie-breaking priority.
+        // AI chat first so "Ask AI" appears at top of home screen
+        registry.register(aiExt)
         registry.register(appExt)
         registry.register(clipExt)
         registry.register(linkExt)
@@ -72,6 +80,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             appExt.setApps(apps)
             viewModel.search() // refresh home screen with real app list
         }
+
+        // Prewarm the model in background to reduce first-response latency
+        Task { await aiService.prewarm() }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
