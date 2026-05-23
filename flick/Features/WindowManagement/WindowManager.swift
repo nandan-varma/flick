@@ -2,23 +2,18 @@ import AppKit
 import ApplicationServices
 
 @MainActor final class WindowManager {
+    // Set by AppDelegate before the launcher appears so window management
+    // targets the correct app even after our panel becomes the key window.
+    var targetWindow: AXUIElement?
+
     func apply(_ action: WindowAction) {
-        let systemWide = AXUIElementCreateSystemWide()
-
-        var focusedAppRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(systemWide, kAXFocusedApplicationAttribute as CFString, &focusedAppRef) == .success,
-              let focusedAppRef else { return }
-        let focusedApp: AXUIElement = unsafeBitCast(focusedAppRef, to: AXUIElement.self)
-
-        var windowRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(focusedApp, kAXFocusedWindowAttribute as CFString, &windowRef) == .success,
-              let windowRef else { return }
-        let axWindow: AXUIElement = unsafeBitCast(windowRef, to: AXUIElement.self)
+        guard let axWindow = targetWindow else { return }
 
         let mainScreen = NSScreen.main
-        let screenFrame = mainScreen?.visibleFrame ?? mainScreen?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let screenFrame = mainScreen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
         let targetFrame = action.frame(in: screenFrame)
 
+        // AX uses top-left origin; convert from macOS bottom-left.
         let mainScreenHeight = mainScreen?.frame.height ?? 900
         let axY = mainScreenHeight - targetFrame.maxY
 

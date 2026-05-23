@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import SwiftUI
 
 @MainActor
@@ -84,7 +85,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = menu
     }
 
-    // Dim the "Enable Hotkey Access…" item when permission is already granted
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(openAccessibilitySettings) {
             return !AXIsProcessTrusted()
@@ -95,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Actions
 
     @objc private func openFlick() {
-        // Small delay so the status menu finishes dismissing before the panel appears
+        // Brief delay so the status menu finishes dismissing before the panel appears.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.showLauncherWindow()
         }
@@ -110,7 +110,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showLauncherWindow() {
+        // Capture the focused window of the frontmost app BEFORE showing the launcher.
+        // Once our nonactivating panel is key, AX-focused-application changes to flick,
+        // so window management commands must use this pre-captured reference.
+        captureTargetWindow()
         windowController?.showWindow(nil)
+    }
+
+    /// Stores the focused window of the currently active app into WindowManager
+    /// so that window snap/resize commands work after the launcher appears.
+    private func captureTargetWindow() {
+        guard let frontmost = NSWorkspace.shared.frontmostApplication else { return }
+        let axApp = AXUIElementCreateApplication(pid_t(frontmost.processIdentifier))
+        var windowRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &windowRef) == .success,
+              let windowRef else {
+            windowManager.targetWindow = nil
+            return
+        }
+        windowManager.targetWindow = unsafeBitCast(windowRef, to: AXUIElement.self)
     }
 
     @objc private func openSettings() {
@@ -135,13 +153,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    // MARK: - Accessibility permission prompt
+    // MARK: - Accessibility prompt
 
     private func promptAccessibilityIfNeeded() {
         guard !AXIsProcessTrusted() else { return }
-
         NSApp.activate(ignoringOtherApps: true)
-
         let alert = NSAlert()
         alert.messageText = "Allow flick to use Accessibility features"
         alert.informativeText = """
@@ -153,7 +169,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Later")
-
         if alert.runModal() == .alertFirstButtonReturn {
             openAccessibilitySettings()
         }
