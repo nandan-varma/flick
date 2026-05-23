@@ -38,13 +38,28 @@ final class HotkeyManager: @unchecked Sendable {
                 ?? CGEventFlags.maskAlternate.rawValue
         ).intersection(relevantModifiers)
 
-        if !AXIsProcessTrusted() {
-            print("[HotkeyManager] Accessibility permission not granted — prompting user.")
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                NSWorkspace.shared.open(url)
+        let trusted = AXIsProcessTrustedWithOptions(
+            [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        )
+        if trusted {
+            registerEventTap()
+        } else {
+            // System has shown the accessibility prompt. Re-check after a short delay
+            // so the event tap is registered once the user grants permission.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                self?.retryIfTrusted()
             }
         }
-        registerEventTap()
+    }
+
+    private func retryIfTrusted() {
+        if AXIsProcessTrusted() {
+            registerEventTap()
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                self?.retryIfTrusted()
+            }
+        }
     }
 
     private func registerEventTap() {

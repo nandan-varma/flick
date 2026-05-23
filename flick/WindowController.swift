@@ -250,6 +250,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         viewModel?.query = ""
         centerOnMainScreen()
         installMonitors()
+        NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(searchField)
     }
