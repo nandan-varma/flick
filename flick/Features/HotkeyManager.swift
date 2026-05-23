@@ -38,31 +38,12 @@ final class HotkeyManager: @unchecked Sendable {
                 ?? CGEventFlags.maskAlternate.rawValue
         ).intersection(relevantModifiers)
 
-        let trusted = AXIsProcessTrustedWithOptions(
-            ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        )
-        if trusted {
-            registerEventTap()
-        } else {
-            // System has shown the accessibility prompt. Re-check after a short delay
-            // so the event tap is registered once the user grants permission.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-                self?.retryIfTrusted()
-            }
-        }
-    }
-
-    private func retryIfTrusted() {
-        if AXIsProcessTrusted() {
-            registerEventTap()
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-                self?.retryIfTrusted()
-            }
-        }
+        registerEventTap()
     }
 
     private func registerEventTap() {
+        guard eventTap == nil else { return }
+
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
         let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
 
@@ -84,7 +65,10 @@ final class HotkeyManager: @unchecked Sendable {
             },
             userInfo: userInfo
         ) else {
-            print("[HotkeyManager] Failed to create event tap — ensure Accessibility permission is granted.")
+            // No accessibility permission yet — retry every 3s until granted
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                self?.registerEventTap()
+            }
             return
         }
 
