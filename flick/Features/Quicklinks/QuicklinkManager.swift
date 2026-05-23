@@ -45,7 +45,7 @@ import Foundation
     }
 
     func remove(at offsets: IndexSet) {
-        quicklinks.remove(atOffsets: offsets)
+        for index in offsets.reversed() { quicklinks.remove(at: index) }
         save()
     }
 
