@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-@main @MainActor
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let viewModel = AppViewModel()
     private var windowController: WindowController?
@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setupStatusItem()
+
         viewModel.clipboardManager = clipboardManager
         viewModel.snippetManager = snippetManager
         viewModel.quicklinkManager = quicklinkManager
@@ -39,9 +41,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager = hotkey
         hotkey.onActivate = { [weak self] in self?.toggleLauncherWindow() }
 
-        setupStatusItem()
-
-        // Prompt for accessibility permission after the app fully launches
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.promptAccessibilityIfNeeded()
         }
