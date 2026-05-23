@@ -64,23 +64,6 @@ import Foundation
             .replacingOccurrences(of: "{clipboard}", with: clipboard)
     }
 
-    func matching(query: String) -> [Snippet] {
-        guard query.hasPrefix("snip:") else { return [] }
-        let term = String(query.dropFirst(5)).trimmingCharacters(in: .whitespaces)
-        guard !term.isEmpty else { return snippets }
-        return snippets
-            .filter {
-                $0.keyword.localizedCaseInsensitiveContains(term) ||
-                $0.name.localizedCaseInsensitiveContains(term)
-            }
-            .sorted { a, b in
-                let aExact = a.keyword.localizedCaseInsensitiveCompare(term) == .orderedSame
-                let bExact = b.keyword.localizedCaseInsensitiveCompare(term) == .orderedSame
-                if aExact != bExact { return aExact }
-                return a.name < b.name
-            }
-    }
-
     func paste(snippet: Snippet) {
         let pb = NSPasteboard.general
         pb.clearContents()

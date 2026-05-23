@@ -33,7 +33,6 @@ enum LauncherMode { case search, chat }
 
     func exitChatMode() {
         mode = .search
-        search()
     }
 
     func search() {

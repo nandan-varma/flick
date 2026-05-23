@@ -5,8 +5,7 @@ private struct FrecencyEntry: Codable {
     var lastUsed: Date
 }
 
-final class FrecencyStore: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.nandanvarma.flick.frecency")
+@MainActor final class FrecencyStore {
     private var entries: [String: FrecencyEntry] = [:]
     private static let defaultsKey = "flick.frecency"
 
@@ -15,21 +14,17 @@ final class FrecencyStore: @unchecked Sendable {
     }
 
     func record(bundleID: String) {
-        queue.sync {
-            var entry = entries[bundleID] ?? FrecencyEntry(count: 0, lastUsed: Date())
-            entry.count += 1
-            entry.lastUsed = Date()
-            entries[bundleID] = entry
-            save()
-        }
+        var entry = entries[bundleID] ?? FrecencyEntry(count: 0, lastUsed: Date())
+        entry.count += 1
+        entry.lastUsed = Date()
+        entries[bundleID] = entry
+        save()
     }
 
     func score(for bundleID: String) -> Double {
-        queue.sync {
-            guard let entry = entries[bundleID] else { return 0 }
-            let daysSince = Date().timeIntervalSince(entry.lastUsed) / 86400
-            return Double(entry.count) / log2(daysSince + 2)
-        }
+        guard let entry = entries[bundleID] else { return 0 }
+        let daysSince = Date().timeIntervalSince(entry.lastUsed) / 86400
+        return Double(entry.count) / log2(daysSince + 2)
     }
 
     private func load() {

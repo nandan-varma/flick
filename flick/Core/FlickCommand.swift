@@ -4,11 +4,16 @@ import AppKit
 protocol FlickCommand: AnyObject {
     var id: String { get }
     var title: String { get }
-    var subtitle: String? { get }   // shown inline after title in the row
+    var subtitle: String? { get }
     var icon: NSImage? { get }
     var keywords: [String] { get }
-    var category: String { get }      // short type badge (right side of row)
-    var actionLabel: String { get }   // bottom action bar
-    var sectionTitle: String { get }  // home-screen section header
+    var category: String { get }
+    var actionLabel: String { get }
+    var sectionTitle: String { get }
     func run()
+}
+
+extension FlickCommand {
+    var subtitle: String? { nil }
+    var keywords: [String] { [] }
 }

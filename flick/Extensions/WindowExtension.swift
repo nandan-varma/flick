@@ -28,7 +28,6 @@ import AppKit
 @MainActor final class WindowActionCommand: FlickCommand {
     let id: String
     let title: String
-    let subtitle: String? = nil
     let icon: NSImage? = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: nil)
     let keywords: [String]
     let category = "Window"

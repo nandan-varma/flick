@@ -305,6 +305,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
             case 53: // Escape — exit chat
                 vm.exitChatMode()
                 searchField.stringValue = ""
+                vm.query = ""
                 return nil
             default:
                 return event
@@ -714,7 +715,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
             ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
             window?.animator().alphaValue = 0
         } completionHandler: { [weak self] in
-            self?.window?.orderOut(nil)
+            DispatchQueue.main.async { self?.window?.orderOut(nil) }
         }
     }
 

@@ -27,10 +27,4 @@ import ApplicationServices
         AXUIElementSetAttributeValue(axWindow, kAXSizeAttribute as CFString, sizeValue)
     }
 
-    func matching(query: String) -> [WindowAction] {
-        let lower = query.lowercased()
-        return WindowAction.allCases.filter { action in
-            action.keywords.contains { $0.contains(lower) }
-        }
-    }
 }

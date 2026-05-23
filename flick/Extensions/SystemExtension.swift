@@ -1,6 +1,5 @@
 import AppKit
 import CoreWLAN
-import Foundation
 
 @MainActor final class SystemExtension: FlickExtension {
     let id = "system"
@@ -12,14 +11,66 @@ import Foundation
 
     init() {
         commands = [
-            SleepCommand(),
-            LockScreenCommand(),
-            RestartCommand(),
-            ShutdownCommand(),
-            EmptyTrashCommand(),
-            ToggleDarkModeCommand(),
-            ToggleWiFiCommand(),
-            ScreenshotCommand(),
+            SystemCommand(
+                id: "sys-sleep", title: "Sleep",
+                systemImage: "moon.fill",
+                keywords: ["sleep", "sleep computer"]
+            ) {
+                runAppleScript("tell application \"System Events\" to sleep")
+            },
+            SystemCommand(
+                id: "sys-lock", title: "Lock Screen",
+                systemImage: "lock.fill",
+                keywords: ["lock", "lock screen"]
+            ) {
+                runAppleScript(#"tell application "System Events" to keystroke "q" using {control down, command down}"#)
+            },
+            SystemCommand(
+                id: "sys-restart", title: "Restart",
+                systemImage: "arrow.clockwise.circle.fill",
+                keywords: ["restart", "reboot"]
+            ) {
+                runAppleScript("tell application \"Finder\" to restart")
+            },
+            SystemCommand(
+                id: "sys-shutdown", title: "Shut Down",
+                systemImage: "power",
+                keywords: ["shutdown", "shut down", "power off"]
+            ) {
+                runAppleScript("tell application \"Finder\" to shut down")
+            },
+            SystemCommand(
+                id: "sys-trash", title: "Empty Trash",
+                systemImage: "trash.fill",
+                keywords: ["empty trash", "trash"]
+            ) {
+                runAppleScript("tell application \"Finder\" to empty trash")
+            },
+            SystemCommand(
+                id: "sys-darkmode", title: "Toggle Dark Mode",
+                systemImage: "circle.lefthalf.filled",
+                keywords: ["dark mode", "light mode", "toggle dark mode"]
+            ) {
+                runAppleScript("tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode")
+            },
+            SystemCommand(
+                id: "sys-wifi", title: "Toggle Wi-Fi",
+                systemImage: "wifi",
+                keywords: ["wifi", "wi-fi", "toggle wifi"]
+            ) {
+                guard let iface = CWWiFiClient.shared().interface() else { return }
+                try? iface.setPower(!iface.powerOn())
+            },
+            SystemCommand(
+                id: "sys-screenshot", title: "Screenshot",
+                systemImage: "camera.viewfinder",
+                keywords: ["screenshot", "capture screen", "screen capture"]
+            ) {
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                task.arguments = ["-i", "-c"]
+                try? task.run()
+            },
         ]
     }
 
@@ -34,120 +85,34 @@ import Foundation
     }
 }
 
-// MARK: - Shared helpers
+// MARK: - Shared helper
 
 @discardableResult
 private func runAppleScript(_ source: String) -> String? {
-    let script = NSAppleScript(source: source)
     var error: NSDictionary?
-    let result = script?.executeAndReturnError(&error)
-    return result?.stringValue
+    return NSAppleScript(source: source)?.executeAndReturnError(&error).stringValue
 }
 
-// MARK: - Command implementations
+// MARK: - Command
 
-private final class SleepCommand: FlickCommand {
-    let id = "sys-sleep"
-    let title = "Sleep"
-    let subtitle: String? = nil
-    let icon: NSImage? = NSImage(systemSymbolName: "moon.fill", accessibilityDescription: nil)
-    let keywords = ["sleep", "sleep computer"]
+private final class SystemCommand: FlickCommand {
+    let id: String
+    let title: String
+    let icon: NSImage?
+    let keywords: [String]
     let category = "Command"
     let actionLabel = "Run Command"
     let sectionTitle = "System Commands"
-    func run() { runAppleScript("tell application \"System Events\" to sleep") }
-}
 
-private final class LockScreenCommand: FlickCommand {
-    let id = "sys-lock"
-    let title = "Lock Screen"
-    let subtitle: String? = nil
-    let icon: NSImage? = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: nil)
-    let keywords = ["lock", "lock screen"]
-    let category = "Command"
-    let actionLabel = "Run Command"
-    let sectionTitle = "System Commands"
-    func run() { runAppleScript("tell application \"System Events\" to keystroke \"q\" using {control down, command down}") }
-}
+    private let action: () -> Void
 
-private final class RestartCommand: FlickCommand {
-    let id = "sys-restart"
-    let title = "Restart"
-    let subtitle: String? = nil
-    let icon: NSImage? = NSImage(systemSymbolName: "arrow.clockwise.circle.fill", accessibilityDescription: nil)
-    let keywords = ["restart", "reboot"]
-    let category = "Command"
-    let actionLabel = "Run Command"
-    let sectionTitle = "System Commands"
-    func run() { runAppleScript("tell application \"Finder\" to restart") }
-}
-
-private final class ShutdownCommand: FlickCommand {
-    let id = "sys-shutdown"
-    let title = "Shut Down"
-    let subtitle: String? = nil
-    let icon: NSImage? = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
-    let keywords = ["shutdown", "shut down", "power off"]
-    let category = "Command"
-    let actionLabel = "Run Command"
-    let sectionTitle = "System Commands"
-    func run() { runAppleScript("tell application \"Finder\" to shut down") }
-}
-
-private final class EmptyTrashCommand: FlickCommand {
-    let id = "sys-trash"
-    let title = "Empty Trash"
-    let subtitle: String? = nil
-    let icon: NSImage? = NSImage(systemSymbolName: "trash.fill", accessibilityDescription: nil)
-    let keywords = ["empty trash", "trash"]
-    let category = "Command"
-    let actionLabel = "Run Command"
-    let sectionTitle = "System Commands"
-    func run() { runAppleScript("tell application \"Finder\" to empty trash") }
-}
-
-private final class ToggleDarkModeCommand: FlickCommand {
-    let id = "sys-darkmode"
-    let title = "Toggle Dark Mode"
-    let subtitle: String? = nil
-    let icon: NSImage? = NSImage(systemSymbolName: "circle.lefthalf.filled", accessibilityDescription: nil)
-    let keywords = ["dark mode", "light mode", "toggle dark mode"]
-    let category = "Command"
-    let actionLabel = "Run Command"
-    let sectionTitle = "System Commands"
-    func run() {
-        runAppleScript("tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode")
+    init(id: String, title: String, systemImage: String, keywords: [String], action: @escaping () -> Void) {
+        self.id = id
+        self.title = title
+        self.icon = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
+        self.keywords = keywords
+        self.action = action
     }
-}
 
-private final class ToggleWiFiCommand: FlickCommand {
-    let id = "sys-wifi"
-    let title = "Toggle Wi-Fi"
-    let subtitle: String? = nil
-    let icon: NSImage? = NSImage(systemSymbolName: "wifi", accessibilityDescription: nil)
-    let keywords = ["wifi", "wi-fi", "toggle wifi"]
-    let category = "Command"
-    let actionLabel = "Run Command"
-    let sectionTitle = "System Commands"
-    func run() {
-        guard let iface = CWWiFiClient.shared().interface() else { return }
-        try? iface.setPower(!iface.powerOn())
-    }
-}
-
-private final class ScreenshotCommand: FlickCommand {
-    let id = "sys-screenshot"
-    let title = "Screenshot"
-    let subtitle: String? = nil
-    let icon: NSImage? = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: nil)
-    let keywords = ["screenshot", "capture screen", "screen capture"]
-    let category = "Command"
-    let actionLabel = "Run Command"
-    let sectionTitle = "System Commands"
-    func run() {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        task.arguments = ["-i", "-c"]
-        try? task.run()
-    }
+    func run() { action() }
 }

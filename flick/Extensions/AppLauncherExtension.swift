@@ -18,10 +18,9 @@ import AppKit
     }
 
     func homeCommands() -> [any FlickCommand] {
-        commands
+        Array(commands
             .sorted { frecencyStore.score(for: $0.bundleID) > frecencyStore.score(for: $1.bundleID) }
-            .prefix(5)
-            .map { $0 }
+            .prefix(5))
     }
 
     func search(query: String) -> [(command: any FlickCommand, score: Double)] {
@@ -39,7 +38,6 @@ import AppKit
 @MainActor final class AppLaunchCommand: FlickCommand {
     let id: String
     let title: String
-    let subtitle: String? = nil
     let icon: NSImage?
     let keywords: [String]
     let category = "Application"

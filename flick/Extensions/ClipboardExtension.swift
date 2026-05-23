@@ -24,11 +24,11 @@ import AppKit
         if term.isEmpty {
             return manager.entries.prefix(8).map { (ClipPasteCommand(entry: $0, manager: manager), 1.0) }
         }
-        return manager.entries.compactMap { entry in
+        return Array(manager.entries.compactMap { entry in
             let s = FuzzyMatcher.score(query: term, against: entry.text)
             guard s > 0 else { return nil }
-            return (ClipPasteCommand(entry: entry, manager: manager), s)
-        }.prefix(8).map { $0 }
+            return (ClipPasteCommand(entry: entry, manager: manager), s) as (any FlickCommand, Double)?
+        }.prefix(8))
     }
 }
 
@@ -39,7 +39,6 @@ import AppKit
     let title: String
     let subtitle: String?
     let icon: NSImage? = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
-    let keywords: [String]
     let category = "Clipboard"
     let actionLabel = "Paste to Active App"
     let sectionTitle = "Recent"
@@ -50,7 +49,6 @@ import AppKit
     init(entry: ClipEntry, manager: ClipboardManager) {
         self.id = "clip-\(entry.id)"
         self.title = entry.text
-        self.keywords = []
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .abbreviated
         self.subtitle = f.localizedString(for: entry.date, relativeTo: Date())

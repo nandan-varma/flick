@@ -160,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             windowManager.targetWindow = nil
             return
         }
-        windowManager.targetWindow = unsafeBitCast(windowRef, to: AXUIElement.self)
+        windowManager.targetWindow = unsafeDowncast(windowRef, to: AXUIElement.self)
     }
 
     @objc private func openSettings() {
