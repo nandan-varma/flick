@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-@MainActor final class QuicklinkManager {
+@Observable @MainActor final class QuicklinkManager {
     static let defaults: [Quicklink] = [
         Quicklink(name: "Google", url: "https://google.com/search?q={query}", keyword: "g"),
         Quicklink(name: "GitHub", url: "https://github.com/search?q={query}", keyword: "gh"),

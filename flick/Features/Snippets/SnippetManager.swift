@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-@MainActor final class SnippetManager {
+@Observable @MainActor final class SnippetManager {
     var snippets: [Snippet] = []
 
     private let storageURL: URL = FileManager.default

@@ -2,7 +2,10 @@ import AppKit
 import Foundation
 
 @MainActor final class ClipboardManager: @unchecked Sendable {
-    var maxEntries: Int = 500
+    var maxEntries: Int {
+        let v = UserDefaults.standard.integer(forKey: "flick.maxClipboardEntries")
+        return v > 0 ? v : 500
+    }
     var entries: [ClipEntry] = []
 
     private var timer: Timer?
