@@ -41,4 +41,10 @@ enum FuzzyMatcher {
 
         return score
     }
+
+    static func bestScore(query: String, title: String, keywords: [String]) -> Double {
+        let titleScore = score(query: query, against: title)
+        let kwScore = keywords.map { score(query: query, against: $0) }.max() ?? 0
+        return max(titleScore, kwScore)
+    }
 }

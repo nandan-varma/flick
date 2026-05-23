@@ -8,7 +8,7 @@ private final class LauncherPanel: NSPanel {
 
 private enum Row {
     case header(String)
-    case item(ResultItem, Int)
+    case item(any FlickCommand, Int)
 
     var isHeader: Bool {
         if case .header = self { return true }
@@ -29,12 +29,6 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         static let separatorHeight: CGFloat = 1
         static let maxVisibleItems = 8
     }
-
-    private static let clipIcon    = NSImage(systemSymbolName: "doc.on.clipboard",     accessibilityDescription: nil)
-    private static let snippetIcon = NSImage(systemSymbolName: "text.quote",           accessibilityDescription: nil)
-    private static let linkIcon    = NSImage(systemSymbolName: "link",                 accessibilityDescription: nil)
-    private static let commandIcon = NSImage(systemSymbolName: "terminal",             accessibilityDescription: nil)
-    private static let windowIcon  = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: nil)
 
     private static let rowIdentifier       = NSUserInterfaceItemIdentifier("ResultRow")
     private static let headerIdentifier    = NSUserInterfaceItemIdentifier("HeaderRow")
@@ -277,9 +271,9 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         let selectedRow = tableView.selectedRow
         guard selectedRow >= 0,
               rows.indices.contains(selectedRow),
-              case .item(let item, _) = rows[selectedRow],
-              case .app(let entry) = item else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([entry.path])
+              case .item(let cmd, _) = rows[selectedRow],
+              let appCmd = cmd as? AppLaunchCommand else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([appCmd.appPath])
         close()
     }
 
@@ -347,7 +341,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         updateActionBar()
     }
 
-    private func buildRows(from results: [ResultItem]) -> [Row] {
+    private func buildRows(from results: [any FlickCommand]) -> [Row] {
         // Section headers only on the home screen; search results are flat by score.
         let addHeaders = viewModel?.isHomeScreen == true
         guard addHeaders else {
@@ -386,21 +380,15 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     private func updateActionBar() {
         guard let vm = viewModel else { return }
         if let calcResult = vm.calculatorResult {
-            actionBar.configure(actionLabel: "Copy \"\(calcResult)\"", icon: NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil))
+            actionBar.configure(
+                actionLabel: "Copy \"\(calcResult)\"",
+                icon: NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
+            )
             return
         }
         let row = tableView.selectedRow
-        if rows.indices.contains(row), case .item(let item, _) = rows[row] {
-            let icon: NSImage?
-            switch item {
-            case .app(let e): icon = NSWorkspace.shared.icon(forFile: e.path.path)
-            case .clip:           icon = Self.clipIcon
-            case .snippet:        icon = Self.snippetIcon
-            case .quicklink:      icon = Self.linkIcon
-            case .command:        icon = Self.commandIcon
-            case .windowAction:   icon = Self.windowIcon
-            }
-            actionBar.configure(actionLabel: item.actionLabel, icon: icon)
+        if rows.indices.contains(row), case .item(let cmd, _) = rows[row] {
+            actionBar.configure(actionLabel: cmd.actionLabel, icon: cmd.icon)
         } else {
             actionBar.configure(actionLabel: "", icon: nil)
         }
@@ -477,7 +465,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
             v.configure(title: title)
             return v
 
-        case .item(let item, _):
+        case .item(let cmd, _):
             let v: ResultRowView
             if let recycled = tableView.makeView(withIdentifier: Self.rowIdentifier, owner: self) as? ResultRowView {
                 v = recycled
@@ -485,16 +473,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
                 v = ResultRowView()
                 v.identifier = Self.rowIdentifier
             }
-            let icon: NSImage?
-            switch item {
-            case .app(let e): icon = NSWorkspace.shared.icon(forFile: e.path.path)
-            case .clip:           icon = Self.clipIcon
-            case .snippet:        icon = Self.snippetIcon
-            case .quicklink:      icon = Self.linkIcon
-            case .command:        icon = Self.commandIcon
-            case .windowAction:   icon = Self.windowIcon
-            }
-            v.configure(with: item, icon: icon)
+            v.configure(with: cmd)
             return v
         }
     }

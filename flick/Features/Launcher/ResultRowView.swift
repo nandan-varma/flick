@@ -63,16 +63,16 @@ final class ResultRowView: NSTableCellView {
         ])
     }
 
-    func configure(with item: ResultItem, icon: NSImage?) {
-        iconView.image = icon
-        nameLabel.stringValue = item.displayName
-        if let sub = item.subtitle, !sub.isEmpty {
+    func configure(with cmd: any FlickCommand) {
+        iconView.image = cmd.icon
+        nameLabel.stringValue = cmd.title
+        if let sub = cmd.subtitle, !sub.isEmpty {
             subtitleLabel.stringValue = sub
             subtitleLabel.isHidden = false
         } else {
             subtitleLabel.isHidden = true
         }
-        categoryLabel.stringValue = item.category
+        categoryLabel.stringValue = cmd.category
     }
 }
 
