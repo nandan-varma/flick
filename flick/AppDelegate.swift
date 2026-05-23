@@ -15,9 +15,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var settingsWindowController: NSWindowController?
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+    }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
         viewModel.clipboardManager = clipboardManager
         viewModel.snippetManager = snippetManager
         viewModel.quicklinkManager = quicklinkManager
@@ -52,11 +54,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         btn?.image?.isTemplate = true
 
         let menu = NSMenu()
-        menu.addItem(withTitle: "Open flick", action: #selector(toggleLauncherWindow), keyEquivalent: "")
+
+        let openItem = NSMenuItem(title: "Open flick", action: #selector(toggleLauncherWindow), keyEquivalent: "")
+        openItem.target = self
+        menu.addItem(openItem)
+
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Preferences…", action: #selector(openSettings), keyEquivalent: ",")
+
+        let prefsItem = NSMenuItem(title: "Preferences…", action: #selector(openSettings), keyEquivalent: ",")
+        prefsItem.target = self
+        menu.addItem(prefsItem)
+
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit flick", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
+        let quitItem = NSMenuItem(title: "Quit flick", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.target = NSApp
+        menu.addItem(quitItem)
+
         statusItem?.menu = menu
     }
 
@@ -71,14 +85,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func openSettings() {
         if settingsWindowController == nil {
             let view = SettingsView(snippetManager: snippetManager, quicklinkManager: quicklinkManager)
-            let wc = NSWindowController(window: NSWindow(contentViewController: NSHostingController(rootView: view)))
-            wc.window?.title = "flick Preferences"
-            wc.window?.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            wc.window?.setContentSize(NSSize(width: 560, height: 420))
-            wc.window?.center()
+            let hosting = NSHostingController(rootView: view)
+            let win = NSWindow(contentViewController: hosting)
+            win.title = "flick Preferences"
+            win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            win.setContentSize(NSSize(width: 560, height: 420))
+            win.center()
+            let wc = NSWindowController(window: win)
             settingsWindowController = wc
         }
-        settingsWindowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+        settingsWindowController?.showWindow(nil)
+        settingsWindowController?.window?.makeKeyAndOrderFront(nil)
     }
 }

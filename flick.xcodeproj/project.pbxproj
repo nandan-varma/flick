@@ -260,6 +260,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAccessibilityUsageDescription = "flick uses Accessibility to manage windows and register global hotkeys.";
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "flick uses Apple Events to control system functions.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -295,6 +296,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAccessibilityUsageDescription = "flick uses Accessibility to manage windows and register global hotkeys.";
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "flick uses Apple Events to control system functions.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
