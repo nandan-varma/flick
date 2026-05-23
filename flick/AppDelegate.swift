@@ -7,12 +7,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let viewModel = AppViewModel()
     private var windowController: WindowController?
     private var hotkeyManager: HotkeyManager?
+
+    // Managers (retained here; also held by extensions)
     private let clipboardManager = ClipboardManager()
     private let snippetManager = SnippetManager()
     private let quicklinkManager = QuicklinkManager()
     private let frecencyStore = FrecencyStore()
     private let windowManager = WindowManager()
     private let appScanner = AppScanner()
+
+    // Extensions (retained so Settings can reach their managers)
+    private var appLauncherExt: AppLauncherExtension?
+    private var snippetExt: SnippetExtension?
+    private var quicklinkExt: QuicklinkExtension?
+
     private var statusItem: NSStatusItem?
     private var settingsWindowController: NSWindowController?
 
@@ -22,20 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
-
-        viewModel.clipboardManager = clipboardManager
-        viewModel.snippetManager = snippetManager
-        viewModel.quicklinkManager = quicklinkManager
-        viewModel.frecencyStore = frecencyStore
-        viewModel.windowManager = windowManager
-
+        setupRegistry()
         clipboardManager.startMonitoring()
-
-        Task {
-            let apps = await appScanner.scan()
-            viewModel.cachedApps = apps
-        }
-
         windowController = WindowController(viewModel: viewModel)
 
         let hotkey = HotkeyManager()
@@ -44,6 +40,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.promptAccessibilityIfNeeded()
+        }
+    }
+
+    private func setupRegistry() {
+        let appExt = AppLauncherExtension(frecencyStore: frecencyStore)
+        let clipExt = ClipboardExtension(manager: clipboardManager)
+        let snipExt = SnippetExtension(manager: snippetManager)
+        let linkExt = QuicklinkExtension(manager: quicklinkManager)
+        let sysExt  = SystemExtension()
+        let winExt  = WindowExtension(manager: windowManager)
+
+        appLauncherExt = appExt
+        snippetExt = snipExt
+        quicklinkExt = linkExt
+
+        let registry = CommandRegistry()
+        // Registration order determines home-screen ordering and tie-breaking priority.
+        registry.register(appExt)
+        registry.register(clipExt)
+        registry.register(linkExt)
+        registry.register(snipExt)
+        registry.register(sysExt)
+        registry.register(winExt)
+
+        viewModel.registry = registry
+        viewModel.search() // populate home screen immediately
+
+        Task {
+            let apps = await appScanner.scan()
+            appExt.setApps(apps)
+            viewModel.search() // refresh home screen with real app list
         }
     }
 
@@ -95,7 +122,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Actions
 
     @objc private func openFlick() {
-        // Brief delay so the status menu finishes dismissing before the panel appears.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.showLauncherWindow()
         }
@@ -110,15 +136,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showLauncherWindow() {
-        // Capture the focused window of the frontmost app BEFORE showing the launcher.
-        // Once our nonactivating panel is key, AX-focused-application changes to flick,
-        // so window management commands must use this pre-captured reference.
         captureTargetWindow()
         windowController?.showWindow(nil)
     }
 
-    /// Stores the focused window of the currently active app into WindowManager
-    /// so that window snap/resize commands work after the launcher appears.
     private func captureTargetWindow() {
         guard let frontmost = NSWorkspace.shared.frontmostApplication else { return }
         let axApp = AXUIElementCreateApplication(pid_t(frontmost.processIdentifier))
@@ -133,7 +154,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         if settingsWindowController == nil {
-            let view = SettingsView(snippetManager: snippetManager, quicklinkManager: quicklinkManager)
+            let view = SettingsView(
+                snippetManager: snippetExt?.manager ?? snippetManager,
+                quicklinkManager: quicklinkExt?.manager ?? quicklinkManager
+            )
             let hosting = NSHostingController(rootView: view)
             let win = NSWindow(contentViewController: hosting)
             win.title = "flick Preferences"
