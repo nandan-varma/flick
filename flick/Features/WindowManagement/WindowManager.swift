@@ -7,11 +7,13 @@ import ApplicationServices
 
         var focusedAppRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(systemWide, kAXFocusedApplicationAttribute as CFString, &focusedAppRef) == .success,
-              let focusedApp = focusedAppRef as? AXUIElement else { return }
+              let focusedAppRef else { return }
+        let focusedApp: AXUIElement = unsafeBitCast(focusedAppRef, to: AXUIElement.self)
 
         var windowRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(focusedApp, kAXFocusedWindowAttribute as CFString, &windowRef) == .success,
-              let axWindow = windowRef as? AXUIElement else { return }
+              let windowRef else { return }
+        let axWindow: AXUIElement = unsafeBitCast(windowRef, to: AXUIElement.self)
 
         let mainScreen = NSScreen.main
         let screenFrame = mainScreen?.visibleFrame ?? mainScreen?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)

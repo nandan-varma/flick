@@ -8,26 +8,6 @@ private enum HotkeyKey {
 
 private let relevantModifiers: CGEventFlags = [.maskAlternate, .maskShift, .maskCommand, .maskControl]
 
-private func eventTapCallback(
-    proxy: CGEventTapProxy,
-    type: CGEventType,
-    event: CGEvent,
-    userInfo: UnsafeMutableRawPointer?
-) -> Unmanaged<CGEvent>? {
-    guard type == .keyDown, let userInfo else { return Unmanaged.passUnretained(event) }
-    let manager = Unmanaged<HotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
-
-    let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-    let eventMods = event.flags.intersection(relevantModifiers)
-
-    if keyCode == Int64(manager.keyCode), eventMods == manager.maskedModifiers {
-        DispatchQueue.main.async { manager.onActivate?() }
-        return nil
-    }
-
-    return Unmanaged.passUnretained(event)
-}
-
 final class HotkeyManager: @unchecked Sendable {
     var onActivate: (() -> Void)?
 
@@ -76,7 +56,17 @@ final class HotkeyManager: @unchecked Sendable {
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: mask,
-            callback: eventTapCallback,
+            callback: { _, type, event, userInfo -> Unmanaged<CGEvent>? in
+                guard type == .keyDown, let userInfo else { return Unmanaged.passUnretained(event) }
+                let manager = Unmanaged<HotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
+                let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+                let eventMods = event.flags.intersection(relevantModifiers)
+                if keyCode == Int64(manager.keyCode), eventMods == manager.maskedModifiers {
+                    DispatchQueue.main.async { manager.onActivate?() }
+                    return nil
+                }
+                return Unmanaged.passUnretained(event)
+            },
             userInfo: userInfo
         ) else {
             print("[HotkeyManager] Failed to create event tap — ensure Accessibility permission is granted.")
