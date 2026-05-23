@@ -40,12 +40,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkey.onActivate = { [weak self] in self?.toggleLauncherWindow() }
 
         setupStatusItem()
+
+        // Prompt for accessibility permission after the app fully launches
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.promptAccessibilityIfNeeded()
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        toggleLauncherWindow()
+        showLauncherWindow()
         return true
     }
+
+    // MARK: - Status Item
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -55,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
 
-        let openItem = NSMenuItem(title: "Open flick", action: #selector(toggleLauncherWindow), keyEquivalent: "")
+        let openItem = NSMenuItem(title: "Open flick", action: #selector(openFlick), keyEquivalent: "")
         openItem.target = self
         menu.addItem(openItem)
 
@@ -64,6 +71,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let prefsItem = NSMenuItem(title: "Preferences…", action: #selector(openSettings), keyEquivalent: ",")
         prefsItem.target = self
         menu.addItem(prefsItem)
+
+        let a11yItem = NSMenuItem(title: "Enable Hotkey Access…", action: #selector(openAccessibilitySettings), keyEquivalent: "")
+        a11yItem.target = self
+        menu.addItem(a11yItem)
 
         menu.addItem(.separator())
 
@@ -74,15 +85,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = menu
     }
 
+    // Dim the "Enable Hotkey Access…" item when permission is already granted
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(openAccessibilitySettings) {
+            return !AXIsProcessTrusted()
+        }
+        return true
+    }
+
+    // MARK: - Actions
+
+    @objc private func openFlick() {
+        // Small delay so the status menu finishes dismissing before the panel appears
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.showLauncherWindow()
+        }
+    }
+
     @objc func toggleLauncherWindow() {
         if let window = windowController?.window, window.isVisible {
             windowController?.close()
         } else {
-            windowController?.showWindow(nil)
+            showLauncherWindow()
         }
     }
 
-    @objc func openSettings() {
+    private func showLauncherWindow() {
+        windowController?.showWindow(nil)
+    }
+
+    @objc private func openSettings() {
         if settingsWindowController == nil {
             let view = SettingsView(snippetManager: snippetManager, quicklinkManager: quicklinkManager)
             let hosting = NSHostingController(rootView: view)
@@ -91,11 +123,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             win.setContentSize(NSSize(width: 560, height: 420))
             win.center()
-            let wc = NSWindowController(window: win)
-            settingsWindowController = wc
+            settingsWindowController = NSWindowController(window: win)
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindowController?.showWindow(nil)
         settingsWindowController?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func openAccessibilitySettings() {
+        NSWorkspace.shared.open(
+            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+        )
+    }
+
+    // MARK: - Accessibility permission prompt
+
+    private func promptAccessibilityIfNeeded() {
+        guard !AXIsProcessTrusted() else { return }
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Allow flick to use Accessibility features"
+        alert.informativeText = """
+            flick needs Accessibility access to register the ⌥Space global hotkey \
+            and manage windows.\n\nOpen System Settings → Privacy & Security → \
+            Accessibility, then add flick to the list. The hotkey activates \
+            automatically once permission is granted — no restart needed.
+            """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Later")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            openAccessibilitySettings()
+        }
     }
 }
