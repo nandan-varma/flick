@@ -86,12 +86,14 @@ import Foundation
         pb.clearContents()
         pb.setString(expand(snippet), forType: .string)
 
-        let src = CGEventSource(stateID: .hidSystemState)
-        let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true)
-        let keyUp = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: false)
-        keyDown?.flags = .maskCommand
-        keyUp?.flags = .maskCommand
-        keyDown?.post(tap: .cgAnnotatedSessionEventTap)
-        keyUp?.post(tap: .cgAnnotatedSessionEventTap)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let src = CGEventSource(stateID: .hidSystemState)
+            let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true)
+            let keyUp   = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: false)
+            keyDown?.flags = .maskCommand
+            keyUp?.flags   = .maskCommand
+            keyDown?.post(tap: .cgAnnotatedSessionEventTap)
+            keyUp?.post(tap: .cgAnnotatedSessionEventTap)
+        }
     }
 }

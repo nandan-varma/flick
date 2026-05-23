@@ -56,13 +56,17 @@ import Foundation
         pb.clearContents()
         pb.setString(entry.text, forType: .string)
 
-        let src = CGEventSource(stateID: .hidSystemState)
-        let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true)
-        let keyUp = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: false)
-        keyDown?.flags = .maskCommand
-        keyUp?.flags = .maskCommand
-        keyDown?.post(tap: .cgAnnotatedSessionEventTap)
-        keyUp?.post(tap: .cgAnnotatedSessionEventTap)
+        // Delay ⌘V so the launcher panel has fully hidden and the previous
+        // app's window has regained key status before the event is posted.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let src = CGEventSource(stateID: .hidSystemState)
+            let keyDown = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true)
+            let keyUp   = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: false)
+            keyDown?.flags = .maskCommand
+            keyUp?.flags   = .maskCommand
+            keyDown?.post(tap: .cgAnnotatedSessionEventTap)
+            keyUp?.post(tap: .cgAnnotatedSessionEventTap)
+        }
     }
 
     private func load() {

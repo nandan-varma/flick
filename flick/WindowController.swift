@@ -8,6 +8,7 @@ private final class LauncherPanel: NSPanel {
 
 @MainActor
 final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate {
+
     private enum Layout {
         static let rowHeight: CGFloat = 48
         static let maxVisibleRows = 8
@@ -15,6 +16,13 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         static let calculatorHeight: CGFloat = 28
         static let layoutPadding: CGFloat = 16
     }
+
+    // Allocated once — not recreated on every table reload
+    private static let clipIcon    = NSImage(systemSymbolName: "doc.on.clipboard",      accessibilityDescription: nil)
+    private static let snippetIcon = NSImage(systemSymbolName: "text.quote",            accessibilityDescription: nil)
+    private static let linkIcon    = NSImage(systemSymbolName: "link",                  accessibilityDescription: nil)
+    private static let commandIcon = NSImage(systemSymbolName: "terminal",              accessibilityDescription: nil)
+    private static let windowIcon  = NSImage(systemSymbolName: "rectangle.split.2x1",  accessibilityDescription: nil)
 
     private static let rowIdentifier = NSUserInterfaceItemIdentifier("ResultRowView")
 
@@ -25,14 +33,14 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     private let scrollView = NSScrollView()
     private var calculatorHeightConstraint: NSLayoutConstraint?
     private var keyDownMonitor: Any?
-    private var mouseDownMonitor: Any?
+    private var clickOutsideMonitor: Any?
 
     init(viewModel: AppViewModel) {
         self.viewModel = viewModel
 
         let panel = LauncherPanel(
-            contentRect: CGRect(x: 0, y: 0, width: 640, height: 480),
-            styleMask: [.nonactivatingPanel, .borderless, .resizable, .fullSizeContentView],
+            contentRect: CGRect(x: 0, y: 0, width: 640, height: 400),
+            styleMask: [.nonactivatingPanel, .borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -55,6 +63,8 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    // MARK: - Setup
+
     private func setupVisualEffect(panel: NSPanel) {
         let vev = NSVisualEffectView()
         vev.material = .hudWindow
@@ -69,7 +79,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     private func setupSearchField() {
         guard let contentView = window?.contentView else { return }
 
-        searchField.placeholderString = "Search apps, commands…"
+        searchField.placeholderString = "Search apps, clipboard, snippets…"
         searchField.isBordered = false
         searchField.drawsBackground = false
         searchField.font = .systemFont(ofSize: 16, weight: .light)
@@ -119,6 +129,8 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         tableView.intercellSpacing = .zero
         tableView.dataSource = self
         tableView.delegate = self
+        tableView.target = self
+        tableView.doubleAction = #selector(tableRowDoubleClicked)
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
@@ -136,39 +148,48 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         ])
     }
 
+    // MARK: - Event monitors
+
     private func installMonitors() {
         guard keyDownMonitor == nil else { return }
+
         keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleKeyDown(event: event) ?? event
         }
-        mouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            self?.handleMouseDown(event: event) ?? event
+
+        // Global monitor dismisses the panel when the user clicks in another app.
+        // Local clicks on the panel itself are handled naturally by AppKit.
+        clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.close()
         }
     }
 
     private func removeMonitors() {
-        if let m = keyDownMonitor { NSEvent.removeMonitor(m); keyDownMonitor = nil }
-        if let m = mouseDownMonitor { NSEvent.removeMonitor(m); mouseDownMonitor = nil }
+        if let m = keyDownMonitor   { NSEvent.removeMonitor(m); keyDownMonitor = nil }
+        if let m = clickOutsideMonitor { NSEvent.removeMonitor(m); clickOutsideMonitor = nil }
     }
+
+    // MARK: - Key handling
 
     private func handleKeyDown(event: NSEvent) -> NSEvent? {
         guard let vm = viewModel else { return event }
         switch event.keyCode {
-        case 125:
+        case 125: // ↓
             vm.moveDown()
             tableView.selectRowIndexes(IndexSet(integer: vm.selectedIndex), byExtendingSelection: false)
             tableView.scrollRowToVisible(vm.selectedIndex)
             return nil
-        case 126:
+        case 126: // ↑
             vm.moveUp()
             tableView.selectRowIndexes(IndexSet(integer: vm.selectedIndex), byExtendingSelection: false)
             tableView.scrollRowToVisible(vm.selectedIndex)
             return nil
-        case 36, 76:
-            vm.runSelected()
+        case 36, 76: // Return / numpad Enter
+            // Close first so the previous app's window regains key status before any paste simulation.
             close()
+            vm.runSelected()
             return nil
-        case 53:
+        case 53: // Escape
             close()
             return nil
         default:
@@ -180,21 +201,22 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         }
     }
 
-    private func handleMouseDown(event: NSEvent) -> NSEvent? {
-        guard let panel = window else { return event }
-        let screenLocation = panel.convertPoint(toScreen: event.locationInWindow)
-        if !panel.frame.contains(screenLocation) { close() }
-        return event
+    @objc private func tableRowDoubleClicked() {
+        guard let vm = viewModel, tableView.clickedRow >= 0 else { return }
+        vm.selectedIndex = tableView.clickedRow
+        close()
+        vm.runSelected()
     }
 
     private func showActionsPanel() {
         guard let vm = viewModel, vm.results.indices.contains(vm.selectedIndex) else { return }
-        let item = vm.results[vm.selectedIndex]
-        if case .app(let entry) = item {
+        if case .app(let entry) = vm.results[vm.selectedIndex] {
             NSWorkspace.shared.activateFileViewerSelecting([entry.path])
             close()
         }
     }
+
+    // MARK: - Observation
 
     func observeViewModel() {
         withObservationTracking {
@@ -208,8 +230,11 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         }
     }
 
+    // MARK: - Table reload & window sizing
+
     private func reloadTable() {
-        guard let vm = viewModel else { return }
+        // Skip all work while the panel is hidden — avoids useless layout passes.
+        guard window?.isVisible == true, let vm = viewModel else { return }
 
         let hasCalcResult = vm.calculatorResult != nil
         calculatorLabel.isHidden = !hasCalcResult
@@ -237,20 +262,25 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         }
     }
 
-    func centerOnMainScreen() {
+    // MARK: - Positioning & visibility
+
+    private func centerOnMainScreen() {
         guard let screen = NSScreen.main, let panel = window else { return }
         let visible = screen.visibleFrame
-        let panelSize = panel.frame.size
-        let x = visible.midX - panelSize.width / 2
-        let y = visible.midY + panelSize.height / 2
+        let x = visible.midX - panel.frame.width / 2
+        let y = visible.midY + panel.frame.height / 2
         panel.setFrameTopLeftPoint(NSPoint(x: x, y: y))
     }
 
     override func showWindow(_ sender: Any?) {
         viewModel?.query = ""
+        viewModel?.selectedIndex = 0
         centerOnMainScreen()
         installMonitors()
-        NSApp.activate(ignoringOtherApps: true)
+        // Do NOT call NSApp.activate — the .nonactivatingPanel style lets the panel
+        // become key (receive keyboard) without stealing app focus. The previously
+        // active app remains the AX-focused application so window management commands
+        // (maximize, snap, etc.) target the correct window.
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(searchField)
     }
@@ -260,9 +290,13 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         window?.orderOut(nil)
     }
 
+    // MARK: - NSTableViewDataSource
+
     func numberOfRows(in tableView: NSTableView) -> Int {
         viewModel?.results.count ?? 0
     }
+
+    // MARK: - NSTableViewDelegate
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let vm = viewModel, vm.results.indices.contains(row) else { return nil }
@@ -278,18 +312,12 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
 
         let icon: NSImage?
         switch item {
-        case .app(let entry):
-            icon = NSWorkspace.shared.icon(forFile: entry.path.path)
-        case .clip:
-            icon = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
-        case .snippet:
-            icon = NSImage(systemSymbolName: "text.quote", accessibilityDescription: nil)
-        case .quicklink:
-            icon = NSImage(systemSymbolName: "link", accessibilityDescription: nil)
-        case .command:
-            icon = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
-        case .windowAction:
-            icon = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: nil)
+        case .app(let entry): icon = NSWorkspace.shared.icon(forFile: entry.path.path)
+        case .clip:           icon = Self.clipIcon
+        case .snippet:        icon = Self.snippetIcon
+        case .quicklink:      icon = Self.linkIcon
+        case .command:        icon = Self.commandIcon
+        case .windowAction:   icon = Self.windowIcon
         }
 
         rowView.configure(with: item, icon: icon)
