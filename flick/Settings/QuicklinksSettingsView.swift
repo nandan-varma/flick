@@ -2,7 +2,7 @@ import SwiftUI
 
 @MainActor
 struct QuicklinksSettingsView: View {
-    @State private var quicklinkManager = QuicklinkManager()
+    var quicklinkManager: QuicklinkManager
     @State private var selection: Quicklink.ID?
 
     var body: some View {
@@ -68,12 +68,9 @@ private struct QuicklinkRow: View {
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
             VStack(alignment: .leading, spacing: 8) {
-                TextField("Name", text: $name)
-                    .onSubmit { save() }
-                TextField("Keyword", text: $keyword)
-                    .onSubmit { save() }
-                TextField("URL", text: $url)
-                    .onSubmit { save() }
+                TextField("Name", text: $name).onSubmit { save() }
+                TextField("Keyword (e.g. g)", text: $keyword).onSubmit { save() }
+                TextField("URL (use {query} for search term)", text: $url).onSubmit { save() }
                 HStack {
                     Spacer()
                     Button("Save") { save() }

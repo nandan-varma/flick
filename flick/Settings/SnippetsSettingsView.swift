@@ -2,7 +2,7 @@ import SwiftUI
 
 @MainActor
 struct SnippetsSettingsView: View {
-    @State private var snippetManager = SnippetManager()
+    var snippetManager: SnippetManager
     @State private var selection: Snippet.ID?
 
     var body: some View {
@@ -68,10 +68,8 @@ private struct SnippetRow: View {
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
             VStack(alignment: .leading, spacing: 8) {
-                TextField("Name", text: $name)
-                    .onSubmit { save() }
-                TextField("Keyword", text: $keyword)
-                    .onSubmit { save() }
+                TextField("Name", text: $name).onSubmit { save() }
+                TextField("Keyword", text: $keyword).onSubmit { save() }
                 TextField("Expansion", text: $expansion, axis: .vertical)
                     .lineLimit(3...6)
                     .onSubmit { save() }

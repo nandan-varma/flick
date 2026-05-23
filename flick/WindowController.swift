@@ -12,6 +12,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         static let rowHeight: CGFloat = 48
         static let maxVisibleRows = 8
         static let searchAreaHeight: CGFloat = 60
+        static let calculatorHeight: CGFloat = 28
         static let layoutPadding: CGFloat = 16
     }
 
@@ -19,8 +20,10 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
 
     weak var viewModel: AppViewModel?
     private let searchField = NSTextField()
+    private let calculatorLabel = NSTextField(labelWithString: "")
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
+    private var calculatorHeightConstraint: NSLayoutConstraint?
     private var keyDownMonitor: Any?
     private var mouseDownMonitor: Any?
 
@@ -44,6 +47,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
 
         setupVisualEffect(panel: panel)
         setupSearchField()
+        setupCalculatorLabel()
         setupTableView()
         observeViewModel()
     }
@@ -82,6 +86,26 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         ])
     }
 
+    private func setupCalculatorLabel() {
+        guard let contentView = window?.contentView else { return }
+
+        calculatorLabel.font = .monospacedSystemFont(ofSize: 20, weight: .medium)
+        calculatorLabel.textColor = .labelColor
+        calculatorLabel.alignment = .center
+        calculatorLabel.isHidden = true
+        calculatorLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        contentView.addSubview(calculatorLabel)
+        let heightConstraint = calculatorLabel.heightAnchor.constraint(equalToConstant: 0)
+        calculatorHeightConstraint = heightConstraint
+        NSLayoutConstraint.activate([
+            calculatorLabel.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 4),
+            calculatorLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            calculatorLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            heightConstraint,
+        ])
+    }
+
     private func setupTableView() {
         guard let contentView = window?.contentView else { return }
 
@@ -105,7 +129,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
 
         contentView.addSubview(scrollView)
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 8),
+            scrollView.topAnchor.constraint(equalTo: calculatorLabel.bottomAnchor, constant: 4),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
@@ -130,26 +154,26 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     private func handleKeyDown(event: NSEvent) -> NSEvent? {
         guard let vm = viewModel else { return event }
         switch event.keyCode {
-        case 125: // down arrow
+        case 125:
             vm.moveDown()
             tableView.selectRowIndexes(IndexSet(integer: vm.selectedIndex), byExtendingSelection: false)
             tableView.scrollRowToVisible(vm.selectedIndex)
             return nil
-        case 126: // up arrow
+        case 126:
             vm.moveUp()
             tableView.selectRowIndexes(IndexSet(integer: vm.selectedIndex), byExtendingSelection: false)
             tableView.scrollRowToVisible(vm.selectedIndex)
             return nil
-        case 36, 76: // return / enter
+        case 36, 76:
             vm.runSelected()
             close()
             return nil
-        case 53: // escape
+        case 53:
             close()
             return nil
         default:
             if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "k" {
-                showActionsAlert()
+                showActionsPanel()
                 return nil
             }
             return event
@@ -158,27 +182,24 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
 
     private func handleMouseDown(event: NSEvent) -> NSEvent? {
         guard let panel = window else { return event }
-        let location = event.locationInWindow
-        let screenLocation = panel.convertPoint(toScreen: location)
-        if !panel.frame.contains(screenLocation) {
-            close()
-        }
+        let screenLocation = panel.convertPoint(toScreen: event.locationInWindow)
+        if !panel.frame.contains(screenLocation) { close() }
         return event
     }
 
-    private func showActionsAlert() {
+    private func showActionsPanel() {
         guard let vm = viewModel, vm.results.indices.contains(vm.selectedIndex) else { return }
         let item = vm.results[vm.selectedIndex]
-        let alert = NSAlert()
-        alert.messageText = "Actions for \"\(item.displayName)\""
-        alert.informativeText = "Secondary actions (stub for V1)"
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        if case .app(let entry) = item {
+            NSWorkspace.shared.activateFileViewerSelecting([entry.path])
+            close()
+        }
     }
 
     func observeViewModel() {
         withObservationTracking {
             _ = viewModel?.results
+            _ = viewModel?.calculatorResult
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 self?.reloadTable()
@@ -189,16 +210,28 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
 
     private func reloadTable() {
         guard let vm = viewModel else { return }
+
+        let hasCalcResult = vm.calculatorResult != nil
+        calculatorLabel.isHidden = !hasCalcResult
+        calculatorHeightConstraint?.constant = hasCalcResult ? Layout.calculatorHeight : 0
+        if let value = vm.calculatorResult {
+            calculatorLabel.stringValue = "= \(value)"
+        }
+
         tableView.reloadData()
-        let visibleRows = min(vm.results.count, Layout.maxVisibleRows)
+
+        let visibleRows = hasCalcResult ? 0 : min(vm.results.count, Layout.maxVisibleRows)
         let tableHeight = CGFloat(visibleRows) * Layout.rowHeight
-        let totalHeight = Layout.searchAreaHeight + tableHeight + Layout.layoutPadding
+        let calcAreaHeight = hasCalcResult ? Layout.calculatorHeight + 8 : 0
+        let totalHeight = Layout.searchAreaHeight + calcAreaHeight + tableHeight + Layout.layoutPadding
+
         if let panel = window {
             var frame = panel.frame
             frame.origin.y += frame.height - totalHeight
             frame.size.height = totalHeight
             panel.setFrame(frame, display: true, animate: false)
         }
+
         if vm.results.indices.contains(vm.selectedIndex) {
             tableView.selectRowIndexes(IndexSet(integer: vm.selectedIndex), byExtendingSelection: false)
         }
@@ -226,13 +259,9 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         window?.orderOut(nil)
     }
 
-    // MARK: - NSTableViewDataSource
-
     func numberOfRows(in tableView: NSTableView) -> Int {
         viewModel?.results.count ?? 0
     }
-
-    // MARK: - NSTableViewDelegate
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let vm = viewModel, vm.results.indices.contains(row) else { return nil }
@@ -258,6 +287,8 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
             icon = NSImage(systemSymbolName: "link", accessibilityDescription: nil)
         case .command:
             icon = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
+        case .windowAction:
+            icon = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: nil)
         }
 
         rowView.configure(with: item, icon: icon)
