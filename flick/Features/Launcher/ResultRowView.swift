@@ -1,12 +1,11 @@
 import AppKit
 
+// Single-line row: [icon] Name  Subtitle(gray)            Category(gray)
 final class ResultRowView: NSTableCellView {
     private let iconView = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
-    private let badgeLabel = NSTextField(labelWithString: "")
-    private let badgeBackground = NSView()
-    private let stack = NSStackView()
+    private let categoryLabel = NSTextField(labelWithString: "")
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -22,35 +21,29 @@ final class ResultRowView: NSTableCellView {
 
         nameLabel.font = .systemFont(ofSize: 14, weight: .medium)
         nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        subtitleLabel.font = .systemFont(ofSize: 11)
+        subtitleLabel.font = .systemFont(ofSize: 13)
         subtitleLabel.textColor = .secondaryLabelColor
         subtitleLabel.lineBreakMode = .byTruncatingTail
+        subtitleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         subtitleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 2
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.addArrangedSubview(nameLabel)
-        stack.addArrangedSubview(subtitleLabel)
-
-        badgeLabel.font = .systemFont(ofSize: 10, weight: .medium)
-        badgeLabel.textColor = .secondaryLabelColor
-        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
-        badgeLabel.setContentHuggingPriority(.required, for: .horizontal)
-        badgeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-        badgeBackground.wantsLayer = true
-        badgeBackground.layer?.cornerRadius = 4
-        badgeBackground.layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
-        badgeBackground.translatesAutoresizingMaskIntoConstraints = false
-        badgeBackground.addSubview(badgeLabel)
+        categoryLabel.font = .systemFont(ofSize: 12)
+        categoryLabel.textColor = .tertiaryLabelColor
+        categoryLabel.alignment = .right
+        categoryLabel.lineBreakMode = .byClipping
+        categoryLabel.setContentHuggingPriority(.required, for: .horizontal)
+        categoryLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        categoryLabel.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(iconView)
-        addSubview(stack)
-        addSubview(badgeBackground)
+        addSubview(nameLabel)
+        addSubview(subtitleLabel)
+        addSubview(categoryLabel)
 
         NSLayoutConstraint.activate([
             iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
@@ -58,17 +51,15 @@ final class ResultRowView: NSTableCellView {
             iconView.widthAnchor.constraint(equalToConstant: 32),
             iconView.heightAnchor.constraint(equalToConstant: 32),
 
-            stack.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 10),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: badgeBackground.leadingAnchor, constant: -8),
+            nameLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 10),
+            nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            badgeBackground.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            badgeBackground.centerYAnchor.constraint(equalTo: centerYAnchor),
+            subtitleLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 8),
+            subtitleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: categoryLabel.leadingAnchor, constant: -12),
 
-            badgeLabel.topAnchor.constraint(equalTo: badgeBackground.topAnchor, constant: 3),
-            badgeLabel.bottomAnchor.constraint(equalTo: badgeBackground.bottomAnchor, constant: -3),
-            badgeLabel.leadingAnchor.constraint(equalTo: badgeBackground.leadingAnchor, constant: 6),
-            badgeLabel.trailingAnchor.constraint(equalTo: badgeBackground.trailingAnchor, constant: -6),
+            categoryLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            categoryLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
 
@@ -81,11 +72,7 @@ final class ResultRowView: NSTableCellView {
         } else {
             subtitleLabel.isHidden = true
         }
-        badgeLabel.stringValue = item.category
-    }
-
-    override func updateLayer() {
-        badgeBackground.layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
+        categoryLabel.stringValue = item.category
     }
 }
 

@@ -348,6 +348,11 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     }
 
     private func buildRows(from results: [ResultItem]) -> [Row] {
+        // Section headers only on the home screen; search results are flat by score.
+        let addHeaders = viewModel?.isHomeScreen == true
+        guard addHeaders else {
+            return results.enumerated().map { .item($1, $0) }
+        }
         var built: [Row] = []
         var lastSection: String? = nil
         for (i, item) in results.enumerated() {
@@ -412,6 +417,8 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     }
 
     override func showWindow(_ sender: Any?) {
+        // Reset search — this triggers search() which populates the home screen.
+        searchField.stringValue = ""
         viewModel?.query = ""
         viewModel?.selectedIndex = 0
         rows = []
