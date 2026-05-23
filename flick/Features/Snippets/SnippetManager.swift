@@ -45,7 +45,7 @@ import Foundation
     }
 
     func remove(at offsets: IndexSet) {
-        snippets.remove(atOffsets: offsets)
+        for index in offsets.reversed() { snippets.remove(at: index) }
         save()
     }
 
