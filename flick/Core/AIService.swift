@@ -23,7 +23,10 @@ import FoundationModels
     }
 
     func prewarm() async {
-        guard isAvailable, let session = try? makeSession() else { return }
+        guard isAvailable else { return }
+        guard !Task.isCancelled else { return }
+        guard let session = try? makeSession() else { return }
+        guard !Task.isCancelled else { return }
         session.prewarm()
     }
 }

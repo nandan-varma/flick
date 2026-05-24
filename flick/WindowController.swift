@@ -295,6 +295,32 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     private func handleKeyDown(event: NSEvent) -> NSEvent? {
         guard let vm = viewModel else { return event }
 
+        // Text-editing shortcuts: explicit forwarding to the field editor because
+        // .nonactivatingPanel doesn't route performKeyEquivalent through the normal chain.
+        if event.modifierFlags.contains(.command), !event.modifierFlags.contains(.option) {
+            if let fieldEditor = window?.firstResponder as? NSTextView {
+                switch event.charactersIgnoringModifiers {
+                case "a":
+                    fieldEditor.selectAll(nil); return nil
+                case "c":
+                    fieldEditor.copy(nil); return nil
+                case "v":
+                    fieldEditor.paste(nil); return nil
+                case "x":
+                    fieldEditor.cut(nil); return nil
+                case "z":
+                    if event.modifierFlags.contains(.shift) {
+                        fieldEditor.undoManager?.redo()
+                    } else {
+                        fieldEditor.undoManager?.undo()
+                    }
+                    return nil
+                default:
+                    break
+                }
+            }
+        }
+
         if vm.mode == .chat {
             switch event.keyCode {
             case 36, 76: // Return — send message
@@ -319,22 +345,23 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         case 126: // ↑
             moveSelection(by: -1)
             return nil
+        case 115: // Home — jump to first result
+            selectEdge(last: false)
+            return nil
+        case 119: // End — jump to last result
+            selectEdge(last: true)
+            return nil
         case 36, 76: // Return / numpad Enter
             if vm.inlineAIResponse != nil {
-                // Copy the inline AI response and dismiss
                 vm.copyInlineAIResponse()
                 close()
             } else {
                 vm.runSelected()
-                // Only close if the command didn't switch to chat mode
-                if vm.mode == .search {
-                    close()
-                }
+                if vm.mode == .search { close() }
             }
             return nil
         case 53: // Escape
             if vm.inlineAIResponse != nil || vm.inlineAIStreaming {
-                // Cancel inline AI without closing
                 vm.cancelInlineAI()
                 searchField.stringValue = ""
                 vm.query = ""
@@ -343,9 +370,17 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
             }
             return nil
         default:
-            if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "k" {
-                showActionsPanel()
-                return nil
+            if event.modifierFlags.contains(.command) {
+                switch event.charactersIgnoringModifiers {
+                case "k":
+                    showActionsPanel()
+                    return nil
+                case "w":
+                    close()
+                    return nil
+                default:
+                    break
+                }
             }
             return event
         }
@@ -354,6 +389,8 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     private func moveSelection(by delta: Int) {
         let current = tableView.selectedRow
         var next = current + delta
+        // If nothing is selected and going down, start from 0
+        if current < 0 && delta > 0 { next = 0 }
         while rows.indices.contains(next) {
             if case .item(_, let idx) = rows[next] {
                 tableView.selectRowIndexes(IndexSet(integer: next), byExtendingSelection: false)
@@ -363,6 +400,17 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
                 return
             }
             next += delta
+        }
+    }
+
+    private func selectEdge(last: Bool) {
+        let candidates = rows.indices.filter { if case .item = rows[$0] { true } else { false } }
+        guard let target = last ? candidates.last : candidates.first else { return }
+        if case .item(_, let idx) = rows[target] {
+            tableView.selectRowIndexes(IndexSet(integer: target), byExtendingSelection: false)
+            tableView.scrollRowToVisible(target)
+            viewModel?.selectedIndex = idx
+            updateActionBar()
         }
     }
 
@@ -555,7 +603,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
         var frame = panel.frame
         frame.origin.y += frame.height - totalHeight
         frame.size.height = totalHeight
-        panel.setFrame(frame, display: true, animate: false)
+        panel.setFrame(frame, display: false, animate: false)
     }
 
     // MARK: - Table reload & window sizing
@@ -589,7 +637,7 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
             var frame = panel.frame
             frame.origin.y += frame.height - totalHeight
             frame.size.height = totalHeight
-            panel.setFrame(frame, display: true, animate: false)
+            panel.setFrame(frame, display: false, animate: false)
         }
 
         let firstItemRow = rows.firstIndex { !$0.isHeader }
@@ -690,17 +738,21 @@ final class WindowController: NSWindowController, NSWindowDelegate, NSTableViewD
     }
 
     override func showWindow(_ sender: Any?) {
-        // Reset to search mode and clear query each time the panel appears.
         viewModel?.cancelInlineAI()
         viewModel?.mode = .search
         searchField.stringValue = ""
         viewModel?.query = ""
         viewModel?.selectedIndex = 0
         rows = []
-        centerOnMainScreen()
         installMonitors()
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(searchField)
+
+        // Resize first so centerOnMainScreen uses the correct final height.
+        viewModel?.search()
+        applyMode()
+        centerOnMainScreen()
+
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.12
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)

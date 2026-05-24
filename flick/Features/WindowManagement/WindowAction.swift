@@ -10,52 +10,57 @@ enum WindowAction: String, CaseIterable, Identifiable, Sendable {
 
     var name: String {
         switch self {
-        case .leftHalf: "Left Half"
-        case .rightHalf: "Right Half"
-        case .topHalf: "Top Half"
-        case .bottomHalf: "Bottom Half"
-        case .maximize: "Maximize"
-        case .center: "Center"
-        case .leftThird: "Left Third"
+        case .leftHalf:    "Left Half"
+        case .rightHalf:   "Right Half"
+        case .topHalf:     "Top Half"
+        case .bottomHalf:  "Bottom Half"
+        case .maximize:    "Maximize"
+        case .center:      "Center"
+        case .leftThird:   "Left Third"
         case .centerThird: "Center Third"
-        case .rightThird: "Right Third"
+        case .rightThird:  "Right Third"
         }
     }
 
     var keywords: [String] {
         switch self {
-        case .leftHalf: ["window left", "left half", "snap left"]
-        case .rightHalf: ["window right", "right half", "snap right"]
-        case .topHalf: ["window top", "top half", "snap top"]
-        case .bottomHalf: ["window bottom", "bottom half", "snap bottom"]
-        case .maximize: ["window maximize", "maximize", "full screen", "window full"]
-        case .center: ["window center", "center window"]
-        case .leftThird: ["window left third", "left third"]
+        case .leftHalf:    ["window left", "left half", "snap left"]
+        case .rightHalf:   ["window right", "right half", "snap right"]
+        case .topHalf:     ["window top", "top half", "snap top"]
+        case .bottomHalf:  ["window bottom", "bottom half", "snap bottom"]
+        case .maximize:    ["window maximize", "maximize", "full screen", "window full"]
+        case .center:      ["window center", "center window"]
+        case .leftThird:   ["window left third", "left third"]
         case .centerThird: ["window center third", "middle third"]
-        case .rightThird: ["window right third", "right third"]
+        case .rightThird:  ["window right third", "right third"]
         }
     }
 
+    // Returns the target frame in AppKit coordinates (bottom-left origin, same system as
+    // visibleFrame). Fractions are kept as CGFloat to avoid integer-division truncation;
+    // WindowManager rounds to integer points before sending to AX.
     func frame(in screen: CGRect) -> CGRect {
+        let w = screen.width, h = screen.height
+        let x = screen.minX,  y = screen.minY
         switch self {
         case .leftHalf:
-            CGRect(x: screen.minX, y: screen.minY, width: screen.width * 0.5, height: screen.height)
+            return CGRect(x: x,         y: y, width: w / 2, height: h)
         case .rightHalf:
-            CGRect(x: screen.minX + screen.width * 0.5, y: screen.minY, width: screen.width * 0.5, height: screen.height)
+            return CGRect(x: x + w / 2, y: y, width: w / 2, height: h)
         case .topHalf:
-            CGRect(x: screen.minX, y: screen.minY + screen.height * 0.5, width: screen.width, height: screen.height * 0.5)
+            return CGRect(x: x, y: y + h / 2, width: w, height: h / 2)
         case .bottomHalf:
-            CGRect(x: screen.minX, y: screen.minY, width: screen.width, height: screen.height * 0.5)
+            return CGRect(x: x, y: y,          width: w, height: h / 2)
         case .maximize:
-            screen
+            return screen
         case .center:
-            CGRect(x: screen.minX + screen.width * 0.25, y: screen.minY + screen.height * 0.25, width: screen.width * 0.5, height: screen.height * 0.5)
+            return CGRect(x: x + w / 4, y: y + h / 4, width: w / 2, height: h / 2)
         case .leftThird:
-            CGRect(x: screen.minX, y: screen.minY, width: screen.width / 3, height: screen.height)
+            return CGRect(x: x,               y: y, width: w / 3, height: h)
         case .centerThird:
-            CGRect(x: screen.minX + screen.width / 3, y: screen.minY, width: screen.width / 3, height: screen.height)
+            return CGRect(x: x + w / 3,       y: y, width: w / 3, height: h)
         case .rightThird:
-            CGRect(x: screen.minX + screen.width * 2 / 3, y: screen.minY, width: screen.width / 3, height: screen.height)
+            return CGRect(x: x + 2 * (w / 3), y: y, width: w / 3, height: h)
         }
     }
 }

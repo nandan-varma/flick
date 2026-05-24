@@ -2,29 +2,69 @@ import AppKit
 import ApplicationServices
 
 @MainActor final class WindowManager {
-    // Set by AppDelegate before the launcher appears so window management
-    // targets the correct app even after our panel becomes the key window.
     var targetWindow: AXUIElement?
 
     func apply(_ action: WindowAction) {
-        guard let axWindow = targetWindow else { return }
+        guard let window = targetWindow, AXIsProcessTrusted() else { return }
+        // Native full-screen windows live in a separate Space; AX can't reposition them.
+        guard !boolAttr("AXFullScreen", of: window) else { return }
+        // Un-zoom (green-button zoom) so the resize isn't fighting the zoomed state.
+        if boolAttr("AXZoomed", of: window) {
+            AXUIElementSetAttributeValue(window, "AXZoomed" as CFString, NSNumber(value: false))
+        }
 
-        let mainScreen = NSScreen.main
-        let screenFrame = mainScreen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
-        let targetFrame = action.frame(in: screenFrame)
+        let screen  = screenFor(window) ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let target  = action.frame(in: visible)
 
-        // AX uses top-left origin; convert from macOS bottom-left.
-        let mainScreenHeight = mainScreen?.frame.height ?? 900
-        let axY = mainScreenHeight - targetFrame.maxY
+        // AX uses top-left origin referenced to the PRIMARY screen (frame.origin == .zero).
+        // AppKit uses bottom-left. Convert once, round to integer points to avoid jitter.
+        let pH     = primaryHeight()
+        let origin = CGPoint(x: target.minX.rounded(), y: (pH - target.maxY).rounded())
+        let size   = CGSize(width: target.width.rounded(), height: target.height.rounded())
 
-        var point = CGPoint(x: targetFrame.minX, y: axY)
-        guard let posValue = AXValueCreate(.cgPoint, &point) else { return }
-
-        var size = CGSize(width: targetFrame.width, height: targetFrame.height)
-        guard let sizeValue = AXValueCreate(.cgSize, &size) else { return }
-
-        AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, posValue)
-        AXUIElementSetAttributeValue(axWindow, kAXSizeAttribute as CFString, sizeValue)
+        // Two full synchronous passes.
+        // Pass 1: apply the desired frame.
+        // Pass 2: correct any drift from minimum-size clamping or origin shift after resize.
+        // AX calls are synchronous (they block until the target app handles the message),
+        // so this runs entirely before close() is called and before the app re-enters focus.
+        setFrame(window, origin: origin, size: size)
+        setFrame(window, origin: origin, size: size)
     }
 
+    // pos → size → pos: move first, resize (may shift origin due to constraints), re-anchor.
+    private func setFrame(_ window: AXUIElement, origin: CGPoint, size: CGSize) {
+        var o = origin, s = size
+        guard let pos = AXValueCreate(.cgPoint, &o),
+              let sz  = AXValueCreate(.cgSize,  &s) else { return }
+        AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, pos)
+        AXUIElementSetAttributeValue(window, kAXSizeAttribute     as CFString, sz)
+        AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, pos)
+    }
+
+    private func boolAttr(_ attr: String, of window: AXUIElement) -> Bool {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, attr as CFString, &ref) == .success else { return false }
+        // CFBoolean toll-free bridges to NSNumber, not directly to Swift Bool.
+        return (ref as? NSNumber)?.boolValue ?? false
+    }
+
+    private func screenFor(_ window: AXUIElement) -> NSScreen? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &ref) == .success,
+              let val = ref, CFGetTypeID(val) == AXValueGetTypeID() else { return nil }
+        var axPt = CGPoint.zero
+        AXValueGetValue(val as! AXValue, .cgPoint, &axPt)
+        // Convert AX (top-left) → AppKit (bottom-left) to find the containing screen.
+        let appKitPt = CGPoint(x: axPt.x, y: primaryHeight() - axPt.y)
+        return NSScreen.screens.first { $0.frame.contains(appKitPt) }
+    }
+
+    private func primaryHeight() -> CGFloat {
+        // The primary screen has its AppKit frame at the global origin (0, 0).
+        // All AX y-coordinates are measured from this screen's top edge.
+        NSScreen.screens.first(where: { $0.frame.origin == .zero })?.frame.height
+            ?? NSScreen.screens.first?.frame.height
+            ?? 900
+    }
 }
